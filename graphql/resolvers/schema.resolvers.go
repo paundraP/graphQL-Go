@@ -7,41 +7,66 @@ package resolvers
 import (
 	"context"
 	"errors"
-	"log"
 
 	"github.com/google/uuid"
 	"github.com/paundraP/be-mcs/user-service/graphql/generated"
-	"github.com/paundraP/be-mcs/user-service/models"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/paundraP/be-mcs/user-service/services"
+	"github.com/paundraP/be-mcs/user-service/tools"
+	"gorm.io/gorm"
 )
+
+// Login is the resolver for the login field.
+func (r *authOpsResolver) Login(ctx context.Context, obj *generated.AuthOps, email string, password string) (any, error) {
+	getUser, err := r.UserRepo.GetUserByEmail(email)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, errors.New("not found")
+		}
+
+	}
+	isValid := tools.CompareHashPassword(password, getUser.Password)
+	if isValid != nil {
+		return nil, errors.New("wrong password")
+	}
+
+	token, err := services.GenerateJWT(ctx, getUser.ID)
+	if err != nil {
+		return nil, errors.New("jwt error")
+	}
+
+	return map[string]interface{}{
+		"token": token,
+	}, nil
+}
+
+// Auth is the resolver for the auth field.
+func (r *mutationResolver) Auth(ctx context.Context) (*generated.AuthOps, error) {
+	return &generated.AuthOps{}, nil
+}
 
 // CreateUser is the resolver for the createUser field.
 func (r *mutationResolver) CreateUser(ctx context.Context, input generated.CreateUserInput) (*generated.User, error) {
-	userId := uuid.New()
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-	if err != nil {
-		log.Fatalf("Failed to hash password: %v", err)
-		return nil, err
+	userID := uuid.New()
+
+	hashPassword := tools.HashPassword(input.Password)
+
+	exist := r.UserRepo.CheckEmail(input.Email)
+	if exist {
+		return nil, errors.New("email already exist")
 	}
-	userExist := r.UserRepo.GetUserByName(input.Name)
-	if userExist {
-		return nil, errors.New("user already exist")
-	}
-	user := &models.User{
-		ID:       userId.String(),
+
+	user := &generated.User{
+		ID:       userID.String(),
 		Name:     input.Name,
 		Email:    input.Email,
-		Password: string(hashedPassword),
+		Password: hashPassword,
 	}
+
 	if err := r.UserRepo.CreateUser(user); err != nil {
 		return nil, err
 	}
-	return &generated.User{
-		ID:       user.ID,
-		Name:     user.Name,
-		Email:    user.Email,
-		Password: "rahasia",
-	}, nil
+
+	return user, nil
 }
 
 // DeleteUser is the resolver for the deleteUser field.
@@ -62,31 +87,36 @@ func (r *queryResolver) User(ctx context.Context, id string) (*generated.User, e
 		return nil, err
 	}
 	return &generated.User{
-		ID:       user.ID,
-		Name:     user.Name,
-		Email:    user.Email,
-		Password: user.Password,
+		ID:    user.ID,
+		Name:  user.Name,
+		Email: user.Email,
 	}, nil
 }
 
 // Users is the resolver for the users field.
-func (r *queryResolver) Users(ctx context.Context) ([]*generated.User, error) {
+func (r *queryResolver) Users(ctx context.Context) ([]*generated.GetUserResponse, error) {
 	users, err := r.UserRepo.GetAllUsers()
 	if err != nil {
 		return nil, err
 	}
 
-	var res []*generated.User
+	var res []*generated.GetUserResponse
 	for _, user := range users {
-		res = append(res, &generated.User{
-			ID:       user.ID,
-			Name:     user.Name,
-			Email:    user.Email,
-			Password: user.Password,
+		res = append(res, &generated.GetUserResponse{
+			ID:    user.ID,
+			Name:  user.Name,
+			Email: user.Email,
 		})
 	}
 	return res, nil
 }
+
+func (r *queryResolver) Protected(ctx context.Context) (string, error) {
+	return "succes", nil
+}
+
+// AuthOps returns generated.AuthOpsResolver implementation.
+func (r *Resolver) AuthOps() generated.AuthOpsResolver { return &authOpsResolver{r} }
 
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
@@ -94,5 +124,6 @@ func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResol
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
+type authOpsResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }

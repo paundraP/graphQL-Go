@@ -2,10 +2,20 @@
 
 package generated
 
+type AuthOps struct {
+	Login any `json:"login"`
+}
+
 type CreateUserInput struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+type GetUserResponse struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 type Mutation struct {
@@ -20,4 +30,3 @@ type User struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
-

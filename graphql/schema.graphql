@@ -1,9 +1,21 @@
+directive @goField(forceResolver: Boolean, name: String) on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
+
+directive @auth on FIELD_DEFINITION
+
+scalar Any
+
 type Query {
     user(id: ID!): User
-    users: [User!]!
+    users: [GetUserResponse!]!
+    protected: String! @goField(forceResolver: true) @auth
+}
+
+type AuthOps {
+  login(email: String!, password: String!): Any! @goField(forceResolver: true)
 }
 
 type Mutation {
+    auth: AuthOps! @goField(forceResolver: true)
     createUser(input: CreateUserInput!): User
     deleteUser(id: ID!): Boolean
 }
@@ -19,4 +31,10 @@ input CreateUserInput {
     name: String!
     email: String!
     password: String!
+}
+
+type GetUserResponse {
+    id: ID!
+    name: String!
+    email: String!
 }
